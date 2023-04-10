@@ -10,7 +10,7 @@
 }
 
 .monaco-editor .lightBulbWidget:hover{
-	cursor: pointer;
+	cursor: zoom-in;
 }
 
 .monaco-editor .lightBulbWidget.codicon-light-bulb {
@@ -37,4 +37,26 @@
 	opacity: 0.3;
 	background-color: var(--vscode-editor-background);
 	z-index: 1;
+}
+.ai-code-actions-container {
+	display: flex!important;
+	flex-direction: row;
+	border: 1px solid #444;
+	border-radius: 4px;
+	box-shadow: 0 0 0 1px rgb(75 75 75 / 2%), 0 3px 6px rgb(75 75 75 / 50%), 0 9px 24px rgb(75 75 75 / 10%);
+}
+
+.ai-code-action {
+	background-color: var(--vscode-editor-background);
+	color: white;
+	font-size: 14px;
+	margin: 0;
+	padding: 6px 10px;
+	display: flex;
+	align-items: center;
+	border: none;
+}
+.ai-code-action:hover {
+	background-color: darkslategrey;
+	cursor: pointer;
 }

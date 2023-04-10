@@ -10,18 +10,22 @@ import { Emitter, Event } from 'vs/base/common/event';
 import { Disposable } from 'vs/base/common/lifecycle';
 import { ThemeIcon } from 'vs/base/common/themables';
 import { withNullAsUndefined } from 'vs/base/common/types';
-import 'vs/css!./lightBulbWidget';
+import 'vs/css!./aiButtonsWidget';
 import { ContentWidgetPositionPreference, ICodeEditor, IContentWidget, IContentWidgetPosition } from 'vs/editor/browser/editorBrowser';
 import { EditorOption } from 'vs/editor/common/config/editorOptions';
 import { IPosition } from 'vs/editor/common/core/position';
+import { StringBuilder } from 'vs/editor/common/core/stringBuilder';
 import { IEditorContribution } from 'vs/editor/common/editorCommon';
 import { computeIndentLevel } from 'vs/editor/common/model/utils';
-import { autoFixCommandId, quickFixCommandId } from 'vs/editor/contrib/codeAction/browser/codeAction';
+import { aiChatCommandId, aiEditCommandId, autoFixCommandId, quickFixCommandId } from 'vs/editor/contrib/codeAction/browser/codeAction';
+import { AiChatAction } from 'vs/editor/contrib/codeAction/browser/codeActionCommands';
 import type { CodeActionSet, CodeActionTrigger } from 'vs/editor/contrib/codeAction/common/types';
 import * as nls from 'vs/nls';
 import { IKeybindingService } from 'vs/platform/keybinding/common/keybinding';
 
-namespace LightBulbState {
+const _ttPolicy = window.trustedTypes?.createPolicy('aiButtonsWidget', { createHTML: value => value });
+
+namespace aiButtonsState {
 
 	export const enum Type {
 		Hidden,
@@ -33,6 +37,7 @@ namespace LightBulbState {
 	export class Showing {
 		readonly type = Type.Showing;
 
+		// this is where the modal data is kept
 		constructor(
 			public readonly actions: CodeActionSet,
 			public readonly trigger: CodeActionTrigger,
@@ -44,9 +49,9 @@ namespace LightBulbState {
 	export type State = typeof Hidden | Showing;
 }
 
-export class LightBulbWidget extends Disposable implements IEditorContribution, IContentWidget {
+export class AiButtonsWidget extends Disposable implements IEditorContribution, IContentWidget {
 
-	public static readonly ID = 'editor.contrib.lightbulbWidget';
+	public static readonly ID = 'editor.contrib.aiButtonsWidget';
 
 	private static readonly _posPref = [ContentWidgetPositionPreference.EXACT];
 
@@ -55,10 +60,10 @@ export class LightBulbWidget extends Disposable implements IEditorContribution, 
 	private readonly _onClick = this._register(new Emitter<{ x: number; y: number; actions: CodeActionSet; trigger: CodeActionTrigger }>());
 	public readonly onClick = this._onClick.event;
 
-	private _state: LightBulbState.State = LightBulbState.Hidden;
+	private _state: aiButtonsState.State = aiButtonsState.Hidden;
 
-	private _preferredKbLabel?: string;
-	private _quickFixKbLabel?: string;
+	private _chatKbLabel?: string;
+	private _editKbLabel?: string;
 
 	constructor(
 		private readonly _editor: ICodeEditor,
@@ -66,7 +71,7 @@ export class LightBulbWidget extends Disposable implements IEditorContribution, 
 	) {
 		super();
 
-		this._domNode = dom.$('div.lightBulbWidget');
+		this._domNode = dom.$('div.aiButtonsWidget');
 
 		this._register(Gesture.ignoreTarget(this._domNode));
 
@@ -75,13 +80,13 @@ export class LightBulbWidget extends Disposable implements IEditorContribution, 
 		this._register(this._editor.onDidChangeModelContent(_ => {
 			// cancel when the line in question has been removed
 			const editorModel = this._editor.getModel();
-			if (this.state.type !== LightBulbState.Type.Showing || !editorModel || this.state.editorPosition.lineNumber >= editorModel.getLineCount()) {
+			if (this.state.type !== aiButtonsState.Type.Showing || !editorModel || this.state.editorPosition.lineNumber >= editorModel.getLineCount()) {
 				this.hide();
 			}
 		}));
 
 		this._register(dom.addStandardDisposableGenericMouseDownListener(this._domNode, e => {
-			if (this.state.type !== LightBulbState.Type.Showing) {
+			if (this.state.type !== aiButtonsState.Type.Showing) {
 				return;
 			}
 
@@ -123,10 +128,10 @@ export class LightBulbWidget extends Disposable implements IEditorContribution, 
 		}));
 
 		this._register(Event.runAndSubscribe(keybindingService.onDidUpdateKeybindings, () => {
-			this._preferredKbLabel = withNullAsUndefined(keybindingService.lookupKeybinding(autoFixCommandId)?.getLabel());
-			this._quickFixKbLabel = withNullAsUndefined(keybindingService.lookupKeybinding(quickFixCommandId)?.getLabel());
+			this._chatKbLabel = withNullAsUndefined(keybindingService.lookupKeybinding(aiChatCommandId)?.getLabel());
+			this._editKbLabel = withNullAsUndefined(keybindingService.lookupKeybinding(aiEditCommandId)?.getLabel());
 
-			this._updateLightBulbTitleAndIcon();
+			this._renderButtons();
 		}));
 	}
 
@@ -136,7 +141,7 @@ export class LightBulbWidget extends Disposable implements IEditorContribution, 
 	}
 
 	getId(): string {
-		return 'LightBulbWidget';
+		return 'aiButtonsWidget';
 	}
 
 	getDomNode(): HTMLElement {
@@ -144,7 +149,7 @@ export class LightBulbWidget extends Disposable implements IEditorContribution, 
 	}
 
 	getPosition(): IContentWidgetPosition | null {
-		return this._state.type === LightBulbState.Type.Showing ? this._state.widgetPosition : null;
+		return this._state.type === aiButtonsState.Type.Showing ? this._state.widgetPosition : null;
 	}
 
 	public update(actions: CodeActionSet, trigger: CodeActionTrigger, atPosition: IPosition) {
@@ -164,6 +169,7 @@ export class LightBulbWidget extends Disposable implements IEditorContribution, 
 
 		const { lineNumber, column } = model.validatePosition(atPosition);
 
+		// CONTROLS WHERE THE MODAL IS RENDERED
 		const tabSize = model.getOptions().tabSize;
 		const fontInfo = options.get(EditorOption.fontInfo);
 		const lineContent = model.getLineContent(lineNumber);
@@ -176,7 +182,7 @@ export class LightBulbWidget extends Disposable implements IEditorContribution, 
 		let effectiveLineNumber = lineNumber;
 		if (!lineHasSpace) {
 			if (lineNumber > 1 && !isFolded(lineNumber - 1)) {
-				effectiveLineNumber -= 1;
+				effectiveLineNumber -= 2;
 			} else if (!isFolded(lineNumber + 1)) {
 				effectiveLineNumber += 1;
 			} else if (column * fontInfo.spaceWidth < 22) {
@@ -186,53 +192,56 @@ export class LightBulbWidget extends Disposable implements IEditorContribution, 
 			}
 		}
 
-		this.state = new LightBulbState.Showing(actions, trigger, atPosition, {
-			position: { lineNumber: effectiveLineNumber, column: 1 },
-			preference: LightBulbWidget._posPref
+		this.state = new aiButtonsState.Showing(actions, trigger, atPosition, {
+			position: { lineNumber: effectiveLineNumber, column: 2 },
+			preference: AiButtonsWidget._posPref
 		});
+
+		// tells the editor to actually render the widget
 		this._editor.layoutContentWidget(this);
 	}
 
 	public hide(): void {
-		if (this.state === LightBulbState.Hidden) {
+		if (this.state === aiButtonsState.Hidden) {
 			return;
 		}
 
-		this.state = LightBulbState.Hidden;
+		this.state = aiButtonsState.Hidden;
 		this._editor.layoutContentWidget(this);
 	}
 
-	private get state(): LightBulbState.State { return this._state; }
+	private get state(): aiButtonsState.State { return this._state; }
 
 	private set state(value) {
 		this._state = value;
-		this._updateLightBulbTitleAndIcon();
+		this._renderButtons();
 	}
 
-	private _updateLightBulbTitleAndIcon(): void {
-		if (this.state.type === LightBulbState.Type.Showing && this.state.actions.hasAutoFix) {
-			// update icon
-			this._domNode.classList.remove(...ThemeIcon.asClassNameArray(Codicon.lightBulb));
-			this._domNode.classList.add(...ThemeIcon.asClassNameArray(Codicon.lightbulbAutofix));
+	private _renderButtons(): void {
+		if (this.state.type === aiButtonsState.Type.Showing) {
 
-			if (this._preferredKbLabel) {
-				this.title = nls.localize('preferredcodeActionWithKb', "Show Code Actions. Preferred Quick Fix Available ({0})", this._preferredKbLabel);
-				return;
-			}
+			const container = document.createElement('div');
+			container.className = 'ai-code-actions-container';
+
+			// TODO: abstract this into a general implementation
+			const chatButton = document.createElement('button');
+			const editButton = document.createElement('button');
+			chatButton.className = 'ai-code-action';
+			editButton.className = 'ai-code-action';
+
+
+
+			chatButton.append(`Chat`);
+			chatButton.append(nls.localize('chatCodeActionWithKb', "{0}", this._chatKbLabel! || ''));
+			editButton.append(`Edit`);
+			editButton.append(nls.localize('chatCodeActionWithKb', "{0}", this._chatKbLabel! || ''));
+
+
+			container.append(chatButton);
+			container.append(editButton);
+
+			this._domNode.replaceChildren(container);
 		}
-
-		// update icon
-		this._domNode.classList.remove(...ThemeIcon.asClassNameArray(Codicon.lightbulbAutofix));
-		this._domNode.classList.add(...ThemeIcon.asClassNameArray(Codicon.lightBulb));
-
-		if (this._quickFixKbLabel) {
-			this.title = nls.localize('codeActionWithKb', "Show Code Actions ({0})", this._quickFixKbLabel);
-		} else {
-			this.title = nls.localize('codeAction', "Show Code Actions");
-		}
 	}
 
-	private set title(value: string) {
-		this._domNode.title = value;
-	}
 }

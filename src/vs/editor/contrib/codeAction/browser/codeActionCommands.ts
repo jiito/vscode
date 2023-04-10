@@ -9,7 +9,7 @@ import { escapeRegExpCharacters } from 'vs/base/common/strings';
 import { ICodeEditor } from 'vs/editor/browser/editorBrowser';
 import { EditorAction, EditorCommand, ServicesAccessor } from 'vs/editor/browser/editorExtensions';
 import { EditorContextKeys } from 'vs/editor/common/editorContextKeys';
-import { autoFixCommandId, codeActionCommandId, fixAllCommandId, organizeImportsCommandId, quickFixCommandId, refactorCommandId, sourceActionCommandId } from 'vs/editor/contrib/codeAction/browser/codeAction';
+import { aiChatCommandId, aiEditCommandId, autoFixCommandId, codeActionCommandId, fixAllCommandId, organizeImportsCommandId, quickFixCommandId, refactorCommandId, sourceActionCommandId } from 'vs/editor/contrib/codeAction/browser/codeAction';
 import * as nls from 'vs/nls';
 import { ContextKeyExpr } from 'vs/platform/contextkey/common/contextkey';
 import { KeybindingWeight } from 'vs/platform/keybinding/common/keybindingsRegistry';
@@ -60,6 +60,37 @@ function triggerCodeActionsForEditorSelection(
 	if (editor.hasModel()) {
 		const controller = CodeActionController.get(editor);
 		controller?.manualTriggerAtCurrentPosition(notAvailableMessage, triggerAction, filter, autoApply);
+	}
+}
+export class AiChatAction extends EditorAction {
+
+	constructor() {
+		super({
+			id: aiChatCommandId,
+			label: nls.localize('aiChat.label', "Chat"),
+			alias: 'Chat',
+			precondition: ContextKeyExpr.and(EditorContextKeys.writable, EditorContextKeys.hasCodeActionsProvider),
+		});
+	}
+
+	public run(_accessor: ServicesAccessor, editor: ICodeEditor): void {
+		console.log("ChatAction");
+	}
+}
+export class AiEditAction extends EditorAction {
+
+	constructor() {
+		super({
+			id: aiEditCommandId,
+			label: nls.localize('aiEdit.label', "Edit"),
+			alias: 'Edit',
+			precondition: ContextKeyExpr.and(EditorContextKeys.writable, EditorContextKeys.hasCodeActionsProvider),
+		});
+	}
+
+	public run(_accessor: ServicesAccessor, editor: ICodeEditor): void {
+		console.log("EditAction");
+		// TODO@jiito: use triggerCodeActionsForEditorSelection instead to trigger code actions
 	}
 }
 

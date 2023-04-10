@@ -48,8 +48,10 @@ export class CodeActionController extends Disposable implements IEditorContribut
 
 		this._model = this._register(new CodeActionModel(this._editor, languageFeaturesService.codeActionProvider, markerService, contextKeyService, progressService));
 
+		// UPDATES THE UI WHEN THE MODEL CHANGES
 		this._register(this._model.onDidChangeState(newState => this._ui.value.update(newState)));
 
+		// UI For the code actions is created
 		this._ui = new Lazy(() => this._register(_instantiationService.createInstance(CodeActionUi, editor, {
 			applyCodeAction: async (action, retrigger, preview) => {
 				try {

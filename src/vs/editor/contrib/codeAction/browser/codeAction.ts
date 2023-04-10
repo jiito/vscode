@@ -34,6 +34,8 @@ export const refactorPreviewCommandId = 'editor.action.refactor.preview';
 export const sourceActionCommandId = 'editor.action.sourceAction';
 export const organizeImportsCommandId = 'editor.action.organizeImports';
 export const fixAllCommandId = 'editor.action.fixAll';
+export const aiChatCommandId = 'editor.action.aiChat';
+export const aiEditCommandId = 'editor.action.aiEdit';
 
 class ManagedCodeActionSet extends Disposable implements CodeActionSet {
 

@@ -24,7 +24,7 @@ import { IConfigurationService } from 'vs/platform/configuration/common/configur
 import { IInstantiationService } from 'vs/platform/instantiation/common/instantiation';
 import { CodeActionAutoApply, CodeActionItem, CodeActionSet, CodeActionTrigger } from '../common/types';
 import { CodeActionsState } from './codeActionModel';
-import { LightBulbWidget } from './lightBulbWidget';
+import { AiButtonsWidget } from 'vs/editor/contrib/codeAction/browser/aiButtonsWidget';
 
 export interface IActionShowOptions {
 	readonly includeDisabledActions?: boolean;
@@ -33,7 +33,7 @@ export interface IActionShowOptions {
 
 export class CodeActionUi extends Disposable {
 
-	private readonly _lightBulbWidget: Lazy<LightBulbWidget | null>;
+	private readonly _aiButtonsWidget: Lazy<AiButtonsWidget | null>;
 	private readonly _activeCodeActions = this._register(new MutableDisposable<CodeActionSet>());
 
 	private readonly _resolver: CodeActionKeybindingResolver;
@@ -54,10 +54,13 @@ export class CodeActionUi extends Disposable {
 	) {
 		super();
 
-		this._lightBulbWidget = new Lazy(() => {
-			const widget = this._editor.getContribution<LightBulbWidget>(LightBulbWidget.ID);
+		// INSTANTIATES THE AI BUTTONS WIDGET
+		this._aiButtonsWidget = new Lazy(() => {
+			const widget = this._editor.getContribution<AiButtonsWidget>(AiButtonsWidget.ID);
 			if (widget) {
-				this._register(widget.onClick(e => this.showCodeActionList(e.actions, e, { includeDisabledActions: false, fromLightbulb: true })));
+				// 	// This is where the code actions are rendered on the click of the lightbulb
+				// 	// TODO: change this to handle clicks
+				// this._register(widget.onClick(e => this.showCodeActionList(e.actions, e, { includeDisabledActions: false, fromLightbulb: true })));
 			}
 			return widget;
 		});
@@ -73,8 +76,9 @@ export class CodeActionUi extends Disposable {
 	}
 
 	public async update(newState: CodeActionsState.State): Promise<void> {
+		console.log('update() called in codeActionUi.ts');
 		if (newState.type !== CodeActionsState.Type.Triggered) {
-			this._lightBulbWidget.rawValue?.hide();
+			this._aiButtonsWidget.rawValue?.hide();
 			return;
 		}
 
@@ -90,55 +94,7 @@ export class CodeActionUi extends Disposable {
 			return;
 		}
 
-		this._lightBulbWidget.value?.update(actions, newState.trigger, newState.position);
-
-		if (newState.trigger.type === CodeActionTriggerType.Invoke) {
-			if (newState.trigger.filter?.include) { // Triggered for specific scope
-				// Check to see if we want to auto apply.
-
-				const validActionToApply = this.tryGetValidActionToApply(newState.trigger, actions);
-				if (validActionToApply) {
-					try {
-						this._lightBulbWidget.value?.hide();
-						await this.delegate.applyCodeAction(validActionToApply, false, false);
-					} finally {
-						actions.dispose();
-					}
-					return;
-				}
-
-				// Check to see if there is an action that we would have applied were it not invalid
-				if (newState.trigger.context) {
-					const invalidAction = this.getInvalidActionThatWouldHaveBeenApplied(newState.trigger, actions);
-					if (invalidAction && invalidAction.action.disabled) {
-						MessageController.get(this._editor)?.showMessage(invalidAction.action.disabled, newState.trigger.context.position);
-						actions.dispose();
-						return;
-					}
-				}
-			}
-
-			const includeDisabledActions = !!newState.trigger.filter?.include;
-			if (newState.trigger.context) {
-				if (!actions.allActions.length || !includeDisabledActions && !actions.validActions.length) {
-					MessageController.get(this._editor)?.showMessage(newState.trigger.context.notAvailableMessage, newState.trigger.context.position);
-					this._activeCodeActions.value = actions;
-					actions.dispose();
-					return;
-				}
-			}
-
-			this._activeCodeActions.value = actions;
-			this.showCodeActionList(actions, this.toCoords(newState.position), { includeDisabledActions, fromLightbulb: false });
-		} else {
-			// auto magically triggered
-			if (this._actionWidgetService.isVisible) {
-				// TODO: Figure out if we should update the showing menu?
-				actions.dispose();
-			} else {
-				this._activeCodeActions.value = actions;
-			}
-		}
+		this._aiButtonsWidget.value?.update(actions, newState.trigger, newState.position);
 	}
 
 	private getInvalidActionThatWouldHaveBeenApplied(trigger: CodeActionTrigger, actions: CodeActionSet): CodeActionItem | undefined {
@@ -169,6 +125,7 @@ export class CodeActionUi extends Disposable {
 		return undefined;
 	}
 
+	// CALLED ON CLICK OF AI BUTTONS
 	public async showCodeActionList(actions: CodeActionSet, at: IAnchor | IPosition, options: IActionShowOptions): Promise<void> {
 		const editorDom = this._editor.getDomNode();
 		if (!editorDom) {
